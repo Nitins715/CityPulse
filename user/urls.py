@@ -1,0 +1,16 @@
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import CivicIssueViewSet
+from .auth_views import register_view, login_view, logout_view, current_user_view
+
+router = DefaultRouter()
+router.register(r'issues', CivicIssueViewSet, basename='civic-issue')
+
+urlpatterns = [
+    path('', include(router.urls)),
+    # Authentication endpoints
+    path('auth/register/', register_view, name='register'),
+    path('auth/login/', login_view, name='login'),
+    path('auth/logout/', logout_view, name='logout'),
+    path('auth/me/', current_user_view, name='current-user'),
+]

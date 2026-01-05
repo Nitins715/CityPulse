@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CityPulse - Citizen Portal{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    {% block extra_head %}{% endblock %}
+</head>
+
+<body>
+    {% csrf_token %}
+    <div class="app-layout">
+        <!-- Unified Citizen Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span class="logo-icon">🏙️</span>
+                    <span>CityPulse</span>
+                </div>
+                <div
+                    style="font-size: 0.75rem; color: var(--primary); font-weight: 700; text-transform: uppercase; margin-top: 4px; letter-spacing: 1px;">
+                    Citizen Portal
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">🏠 Home</a>
+                <a href="/report/" class="nav-item {% if request.path == '/report/' %}active{% endif %}">➕ Report
+                    Issue</a>
+                <a href="/issues/" class="nav-item {% if request.path == '/issues/' %}active{% endif %}">📊 My
+                    Reports</a>
+                <a href="/map/" class="nav-item {% if request.path == '/map/' %}active{% endif %}">🔥 Heatmap</a>
+                <a href="/profile/" class="nav-item {% if request.path == '/profile/' %}active{% endif %}">👤
+                    Profile</a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button id="baseLogoutBtn" class="btn btn-danger btn-sm"
+                    style="width: 100%; justify-content: center;">Logout</button>
+            </div>
+        </aside>
+
+        <!-- Mobile Bottom Navigation -->
+        <nav class="mobile-nav">
+            <a href="/" class="mobile-nav-item {% if request.path == '/' %}active{% endif %}">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">Home</span>
+            </a>
+            <a href="/report/" class="mobile-nav-item {% if request.path == '/report/' %}active{% endif %}">
+                <span class="nav-icon">➕</span>
+                <span class="nav-label">Report</span>
+            </a>
+            <a href="/issues/" class="mobile-nav-item {% if request.path == '/issues/' %}active{% endif %}">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Activity</span>
+            </a>
+            <a href="/map/" class="mobile-nav-item {% if request.path == '/map/' %}active{% endif %}">
+                <span class="nav-icon">🔥</span>
+                <span class="nav-label">Map</span>
+            </a>
+            <a href="/profile/" class="mobile-nav-item {% if request.path == '/profile/' %}active{% endif %}">
+                <span class="nav-icon">👤</span>
+                <span class="nav-label">Profile</span>
+            </a>
+        </nav>
+
+        <style>
+            .mobile-nav {
+                display: none;
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                width: 100%;
+                background: white;
+                border-top: 1px solid var(--gray-200);
+                padding: 0.75rem 1rem;
+                z-index: 1000;
+                justify-content: space-around;
+                box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.05);
+            }
+
+            .mobile-nav-item {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-decoration: none;
+                color: var(--gray-500);
+                font-size: 0.7rem;
+                font-weight: 600;
+                gap: 2px;
+                flex: 1;
+            }
+
+            .mobile-nav-item.active {
+                color: var(--primary);
+            }
+
+            .mobile-nav-item .nav-icon {
+                font-size: 1.5rem;
+                margin-bottom: 2px;
+            }
+
+            @media (max-width: 1024px) {
+                .mobile-nav {
+                    display: flex;
+                }
+
+                .main-content {
+                    padding-bottom: 80px;
+                }
+
+                /* Prevent content overlap */
+            }
+        </style>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Global Base Logic -->
+    <script>
+        const API_BASE = '/api';
+
+        async function checkBaseAuth() {
+            try {
+                const response = await fetch(`${API_BASE}/user/auth/me/`, { credentials: 'include' });
+                if (response.ok) {
+                    const user = await response.json();
+                    if (user.is_staff) { window.location.href = '/authority/'; return; }
+
+                    const name = user.first_name || user.username;
+                    const avatarEl = document.getElementById('baseAvatar');
+                    const nameEl = document.getElementById('baseUserName');
+
+                    if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
+                    if (nameEl) nameEl.textContent = name;
+
+                    // Shared logic callback if exists
+                    if (typeof onAuthReady === 'function') onAuthReady(user);
+                } else { window.location.href = '/login/'; }
+            } catch (err) { window.location.href = '/login/'; }
+        }
+
+        document.getElementById('baseLogoutBtn').onclick = async () => {
+            await fetch(`${API_BASE}/user/auth/logout/`, { method: 'POST', credentials: 'include' });
+            window.location.href = '/login/';
+        };
+
+        checkBaseAuth();
+    </script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+
+</html>

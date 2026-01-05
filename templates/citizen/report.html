@@ -1,0 +1,211 @@
+{% extends 'citizen/base_citizen.html' %}
+
+{% block title %}Report Issue - CityPulse{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 800px;">
+    <div style="margin-bottom: 2rem;">
+        <h1 style="font-size: 2.5rem; font-weight: 800; margin-bottom: 0.5rem;">🚀 New Report</h1>
+        <p style="color: var(--gray-500);">Help us identify and fix civic issues by providing details below.</p>
+    </div>
+
+    <div id="alertContainer"></div>
+
+    <div class="card">
+        <form id="reportForm">
+            <div class="form-group">
+                <label class="form-label">📸 Issue Photo *</label>
+                <div id="dropZone"
+                    style="border: 2.5px dashed var(--gray-300); padding: 3rem; border-radius: var(--radius-lg); text-align: center; cursor: pointer; background: var(--gray-50); transition: var(--transition);">
+                    <p id="dropText" style="color: var(--gray-600); font-weight: 600;">Tap to select or drag photo here
+                    </p>
+                    <input type="file" id="photo" hidden accept="image/*" required>
+                    <div id="photoPreview" style="margin-top: 1rem; display: none;">
+                        <img id="previewImg"
+                            style="max-width: 100%; border-radius: var(--radius-md); box-shadow: var(--shadow-md);">
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">🏷️ Category *</label>
+                <select id="category" class="form-select" required>
+                    <option value="">Select issue type...</option>
+                    <option value="POTHOLE">Potholes</option>
+                    <option value="GARBAGE">Garbage overflow</option>
+                    <option value="WATER">Water leakage</option>
+                    <option value="STREETLIGHT">Broken streetlights</option>
+                    <option value="ROAD_OBSTRUCTION">Road obstruction</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">📝 Description *</label>
+                <textarea id="description" class="form-textarea"
+                    placeholder="Describe the issue... (e.g. Large pothole near the main market entrance)"
+                    required></textarea>
+            </div>
+
+            <div class="card"
+                style="background: white; border: 1.5px solid var(--gray-100); margin-top: 2rem; padding: 1.5rem;">
+                <h4 style="margin-bottom: 1.5rem; font-weight: 700;">📍 Location Context</h4>
+                <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+                    <button type="button" id="autoLoc" class="btn btn-primary" style="flex: 1;">📍 Auto-Detect</button>
+                    <button type="button" onclick="document.getElementById('manualFields').style.display='block'"
+                        class="btn btn-secondary" style="flex: 1;">✏️ Manual Edit</button>
+                </div>
+
+                <div id="manualFields">
+                    <div class="grid grid-2">
+                        <div class="form-group"><label class="form-label small">Latitude *</label><input type="text"
+                                id="lat" class="form-input" placeholder="e.g. 28.53" required></div>
+                        <div class="form-group"><label class="form-label small">Longitude *</label><input type="text"
+                                id="lon" class="form-input" placeholder="e.g. 77.11" required></div>
+                    </div>
+                    <div class="form-group"><label class="form-label small">Address / Landmark *</label><input
+                            type="text" id="addr" class="form-input" placeholder="Enter specific location..." required>
+                    </div>
+                    <div class="grid grid-2">
+                        <div class="form-group"><label class="form-label small">Area *</label><input type="text"
+                                id="area" class="form-input" placeholder="e.g. Sector 12" required></div>
+                        <div class="form-group"><label class="form-label small">City *</label><input type="text"
+                                id="city" value="New Delhi" class="form-input" placeholder="e.g. Gurugram" required>
+                        </div>
+                    </div>
+                </div>
+                <p id="locStatus"
+                    style="font-size: 0.875rem; font-weight: 600; text-align: center; margin-top: 0.5rem;"></p>
+            </div>
+
+            <button type="submit" id="submitBtn" class="btn btn-primary"
+                style="width: 100%; padding: 1.25rem; font-size: 1.1rem; margin-top: 2rem;">🚀 Submit Official
+                Report</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function showAlert(msg, type = 'success') {
+        const c = document.getElementById('alertContainer');
+        const a = document.createElement('div');
+        a.className = `alert alert-${type}`; a.textContent = msg;
+        c.appendChild(a); setTimeout(() => a.remove(), 5000);
+    }
+
+    const dz = document.getElementById('dropZone'); const pi = document.getElementById('photo');
+    dz.onclick = () => pi.click();
+    pi.onchange = (e) => {
+        const f = e.target.files[0];
+        if (f) {
+            const r = new FileReader();
+            r.onload = (e) => {
+                document.getElementById('previewImg').src = e.target.result;
+                document.getElementById('photoPreview').style.display = 'block';
+                document.getElementById('dropText').style.display = 'none';
+            };
+            r.readAsDataURL(f);
+        }
+    };
+
+    const MAPS_KEY = "{{ maps_api_key|default:'' }}";
+
+    document.getElementById('autoLoc').onclick = () => {
+        const s = document.getElementById('locStatus'); s.textContent = "⏳ Syncing GPS...";
+        navigator.geolocation.getCurrentPosition(async p => {
+            const lat = p.coords.latitude.toFixed(6);
+            const lon = p.coords.longitude.toFixed(6);
+
+            document.getElementById('lat').value = lat;
+            document.getElementById('lon').value = lon;
+
+            // Default fallbacks
+            let addr = "Current Location";
+            let area = "Detected Area";
+            let city = "Unknown City";
+
+            // If API Key exists, try Reverse Geocoding
+            if (MAPS_KEY) {
+                try {
+                    s.textContent = "⏳ Fetching Address...";
+                    const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${MAPS_KEY}`);
+                    const data = await res.json();
+
+                    if (data.status === 'OK' && data.results[0]) {
+                        addr = data.results[0].formatted_address;
+                        // Extract Area/City from components
+                        const comps = data.results[0].address_components;
+                        const sublo = comps.find(c => c.types.includes('sublocality') || c.types.includes('neighborhood'));
+                        const cityC = comps.find(c => c.types.includes('locality') || c.types.includes('administrative_area_level_2'));
+
+                        if (sublo) area = sublo.long_name;
+                        if (cityC) city = cityC.long_name;
+                    }
+                } catch (e) { console.error("Geocoding failed", e); }
+            }
+
+            document.getElementById('addr').value = addr;
+            document.getElementById('area').value = area;
+            document.getElementById('city').value = city;
+
+            document.getElementById('manualFields').style.display = 'block';
+            s.textContent = "✅ Accurate Location Found"; s.style.color = "var(--success)";
+        }, (err) => {
+            s.textContent = "❌ GPS Failed - Please enter manually."; s.style.color = "var(--danger)";
+            document.getElementById('manualFields').style.display = 'block';
+        });
+    };
+
+    document.getElementById('reportForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('submitBtn'); btn.disabled = true; btn.textContent = "🚀 Submitting...";
+
+        const lat = parseFloat(document.getElementById('lat').value).toFixed(6);
+        const lon = parseFloat(document.getElementById('lon').value).toFixed(6);
+
+        const fd = new FormData();
+        fd.append('description', document.getElementById('description').value);
+        fd.append('issue_type', document.getElementById('category').value);
+        fd.append('latitude', lat);
+        fd.append('longitude', lon);
+        fd.append('address', document.getElementById('addr').value);
+        fd.append('area', document.getElementById('area').value);
+        fd.append('city', document.getElementById('city').value);
+        fd.append('image', pi.files[0]);
+
+        try {
+            const res = await fetch(`${API_BASE}/user/issues/`, {
+                method: 'POST', credentials: 'include',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') }, body: fd
+            });
+            if (res.ok) {
+                showAlert('Report submitted! Redirecting...');
+                setTimeout(() => window.location.href = '/', 1000);
+            } else {
+                const errorData = await res.json();
+                let errMsg = 'Submission failed: ';
+                for (const key in errorData) {
+                    errMsg += `${key}: ${errorData[key]} `;
+                }
+                showAlert(errMsg, 'error');
+            }
+        } catch (err) { showAlert('Network error or server unavailable.', 'error'); }
+        finally { btn.disabled = false; btn.textContent = "🚀 Submit Official Report"; }
+    };
+</script>
+{% endblock %}

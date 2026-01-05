@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- Note: I am intentionally NOT loading static/style.css to keep this dashboard strictly decoupled -->
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CityAdmin - Professional Authority Dashboard</title>
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Leaflet & Chart.js -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+        :root {
+            --admin-sidebar: #0f172a;
+            --admin-accent: #3b82f6;
+            --admin-success: #10b981;
+            --admin-danger: #ef4444;
+            --admin-text-main: #1e293b;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            color: var(--admin-text-main);
+        }
+
+        /* Dedicated Admin Sidebar */
+        .admin-sidebar {
+            width: 260px;
+            height: 100vh;
+            background-color: var(--admin-sidebar);
+            position: fixed;
+            left: 0;
+            top: 0;
+            padding: 2rem 0;
+            color: rgba(255, 255, 255, 0.7);
+            z-index: 1050;
+        }
+
+        .admin-nav-item {
+            padding: 0.875rem 1.5rem;
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            border-left: 4px solid transparent;
+            font-weight: 500;
+        }
+
+        .admin-nav-item:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .admin-nav-item.active {
+            color: white;
+            background: rgba(59, 130, 246, 0.1);
+            border-left-color: var(--admin-accent);
+        }
+
+        .admin-main {
+            margin-left: 260px;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        .admin-top-nav {
+            height: 70px;
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 0 2.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .admin-content {
+            padding: 2.5rem;
+        }
+
+        /* Scoped Stat Cards */
+        .admin-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border: 1px solid #f1f5f9;
+        }
+
+        .admin-stat-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .admin-stat-value {
+            font-size: 1.75rem;
+            font-weight: 800;
+            margin-bottom: 0.25rem;
+        }
+
+        /* Scoped Views */
+        .admin-view {
+            display: none;
+        }
+
+        .admin-view.active {
+            display: block;
+        }
+
+        .badge-admin {
+            padding: 0.25rem 0.75rem;
+            border-radius: 99px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-prio-critical {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-status-pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        #admin-map-container {
+            height: calc(100vh - 300px);
+            border-radius: 12px;
+            width: 100%;
+        }
+
+        .alert-clickable {
+            cursor: pointer;
+            transition: all 0.2s;
+            border-radius: 8px !important;
+            padding: 12px !important;
+        }
+
+        .alert-clickable:hover {
+            background: #f1f5f9 !important;
+            transform: translateX(5px);
+        }
+
+        /* Modal Styles */
+        .admin-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.7);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .admin-modal.active {
+            display: flex;
+        }
+
+        .admin-modal-content {
+            background: white;
+            width: 90%;
+            max-width: 700px;
+            border-radius: 16px;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+            padding: 2.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Scoped Admin Sidebar -->
+    <aside class="admin-sidebar">
+        <div class="px-4 mb-5 text-white fw-bold h4 d-flex align-items-center gap-2">
+            <span>🏙️</span> CityAdmin
+        </div>
+        <nav>
+            <div class="admin-nav-item active" onclick="switchView('overview', this)">
+                <span>📊</span> Overview
+            </div>
+            <div class="admin-nav-item" onclick="switchView('tickets', this)">
+                <span>🎫</span> Tickets <span class="badge bg-secondary ms-auto" id="ticketBadge"
+                    style="font-size: 0.65rem;">0</span>
+            </div>
+            <div class="admin-nav-item" onclick="switchView('map', this)">
+                <span>🗺️</span> City Map
+            </div>
+            <div class="admin-nav-item" onclick="switchView('analytics', this)">
+                <span>📉</span> Analytics
+            </div>
+            <div class="admin-nav-item" onclick="switchView('settings', this)">
+                <span>⚙️</span> Settings
+            </div>
+        </nav>
+        <div class="position-absolute bottom-0 w-100 p-4">
+            <div class="admin-nav-item text-danger border-0" id="logoutBtn">
+                <span>🚪</span> Logout
+            </div>
+        </div>
+    </aside>
+
+    <!-- Scoped Admin Main Section -->
+    <main class="admin-main">
+        <header class="admin-top-nav">
+            <h5 class="m-0 fw-bold" id="viewTitle">Overview</h5>
+            <div class="d-flex align-items-center gap-3">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center"
+                        style="width: 35px; height: 35px; font-weight: 700;" id="userInit">A</div>
+                    <span class="fw-bold small" id="userName">Authority User</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="admin-content">
+            <!-- Overview -->
+            <div id="view-overview" class="admin-view active">
+                <div class="row g-4 mb-5">
+                    <div class="col-md-3">
+                        <div class="admin-card">
+                            <div class="admin-stat-label">Total Submissions</div>
+                            <div class="admin-stat-value" id="stat-total">0</div>
+                            <div class="small text-success fw-bold">↑ Healthy response rate</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="admin-card">
+                            <div class="admin-stat-label">Pending Action</div>
+                            <div class="admin-stat-value text-warning" id="stat-pending">0</div>
+                            <div class="small text-muted">Review required</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="admin-card">
+                            <div class="admin-stat-label">In Progress</div>
+                            <div class="admin-stat-value text-info" id="stat-inprogress">0</div>
+                            <div class="small text-muted">Awaiting resolution</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="admin-card">
+                            <div class="admin-stat-label">Resolved Issues</div>
+                            <div class="admin-stat-value text-success" id="stat-resolved">0</div>
+                            <div class="small text-muted">Last 30 days</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-lg-8">
+                        <div class="admin-card">
+                            <h6 class="fw-bold mb-4 text-primary">Infrastructure Performance Analysis</h6>
+                            <div class="row g-3">
+                                <div class="col-6">
+                                    <div class="text-center small fw-bold mb-1">Total (All)</div>
+                                    <div style="height: 180px;"><canvas id="chartTotal"></canvas></div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="text-center small fw-bold mb-1 text-warning">Pending</div>
+                                    <div style="height: 180px;"><canvas id="chartPending"></canvas></div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="text-center small fw-bold mb-1 text-info">In Progress</div>
+                                    <div style="height: 180px;"><canvas id="chartProgress"></canvas></div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="text-center small fw-bold mb-1 text-success">Resolved</div>
+                                    <div style="height: 180px;"><canvas id="chartResolved"></canvas></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="admin-card h-100">
+                            <h6 class="fw-bold mb-4">Critical Alerts</h6>
+                            <div id="critical-list" class="list-group list-group-flush">
+                                <!-- Alerts -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tickets (All Issues) -->
+        <div id="view-tickets" class="admin-view text">
+            <div class="admin-card p-0">
+                <div class="p-4 border-bottom d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold">Live Ticket Console</h6>
+                    <button class="btn btn-outline-primary btn-sm" onclick="loadTickets(1)">Refresh Data</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4">Ticket</th>
+                                <th>Title</th>
+                                <th>Area</th>
+                                <th>Priority</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tickets-body">
+                            <tr>
+                                <td colspan="6" class="text-center p-5">Loading official ticket repository...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Pagination Footer -->
+                <div class="p-4 border-top d-flex justify-content-between align-items-center">
+                    <span class="text-muted small" id="ticketPageInfo">Showing 0 of 0 tickets</span>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" id="btnPrevTick" disabled
+                            onclick="changeTicketPage(-1)">Previous</button>
+                        <button class="btn btn-sm btn-outline-secondary" id="btnNextTick" disabled
+                            onclick="changeTicketPage(1)">Next</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Map -->
+        <div id="view-map" class="admin-view">
+            <div class="admin-card p-0 overflow-hidden mb-4">
+                <div id="admin-map-container"></div>
+            </div>
+
+            <!-- Map Statistics -->
+            <div class="row g-4">
+                <div class="col-md-3">
+                    <div class="admin-card text-center py-4">
+                        <div class="h2 fw-bold mb-1" id="map-total">0</div>
+                        <div class="small fw-bold text-muted" style="letter-spacing: 1px;">TOTAL MARKERS</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="admin-card text-center py-4">
+                        <div class="h2 fw-bold mb-1 text-warning" id="map-pending">0</div>
+                        <div class="small fw-bold text-muted" style="letter-spacing: 1px;">PENDING</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="admin-card text-center py-4">
+                        <div class="h2 fw-bold mb-1 text-info" id="map-progress">0</div>
+                        <div class="small fw-bold text-muted" style="letter-spacing: 1px;">IN PROGRESS</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="admin-card text-center py-4">
+                        <div class="h2 fw-bold mb-1 text-success" id="map-resolved">0</div>
+                        <div class="small fw-bold text-muted" style="letter-spacing: 1px;">RESOLVED</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analytics & AI -->
+        <div id="view-analytics" class="admin-view">
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="admin-card"><canvas id="chart-A"></canvas></div>
+                </div>
+                <div class="col-md-6">
+                    <div class="admin-card"><canvas id="chart-B"></canvas></div>
+                </div>
+                <div class="col-12">
+                    <div class="admin-card border-primary">
+                        <h5 class="fw-bold mb-3 d-flex align-items-center gap-2"><span>🤖</span> AI Executive
+                            Summary</h5>
+                        <div id="ai-insights" class="p-3 bg-light rounded text-muted">Ready to analyze dataset...
+                        </div>
+                        <button class="btn btn-primary mt-3" onclick="genReport()">Execute AI Breakdown</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings -->
+        <!-- Note: This is an SPA (Single Page Application) layout. All 'pages' are contained within this one file for performance. -->
+        <div id="view-settings" class="admin-view">
+            <div class="row g-4">
+                <!-- Profile Section -->
+                <div class="col-md-5">
+                    <div class="admin-card text-center p-5 h-100">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
+                            style="width: 80px; height: 80px; font-size: 2rem; font-weight: 700;">A</div>
+                        <h4 class="fw-bold mb-1" id="settingsName">Authority Admin</h4>
+                        <p class="text-muted small mb-4">Senior Official • Public Works</p>
+                        <span class="badge bg-success bg-opacity-10 text-success px-3 py-2 rounded-pill">Active
+                            Status</span>
+                    </div>
+                </div>
+
+                <!-- Details Section -->
+                <div class="col-md-7">
+                    <div class="admin-card mb-4">
+                        <h6 class="fw-bold mb-4 border-bottom pb-3">Account Information</h6>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label small fw-bold text-muted">AUTHORITY ID</label>
+                                <input type="text" id="set-uid" class="form-control bg-light" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-muted">JURISDICTION</label>
+                                <input type="text" class="form-control bg-light" value="Haryana State" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-muted">ACCESS LEVEL</label>
+                                <input type="text" class="form-control bg-light" value="Level 4 (Admin)" readonly>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="admin-card">
+                        <h6 class="fw-bold mb-3 border-bottom pb-3">System Preferences</h6>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <div class="fw-bold small">Email Notifications</div>
+                                <div class="text-muted smaller">Receive digests for critical alerts</div>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" checked disabled>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="fw-bold small">Auto-Archive Resolved</div>
+                                <div class="text-muted smaller">Archive tickets after 30 days</div>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" checked disabled>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+    </main>
+
+    <!-- Authority Ticket Detail Modal -->
+    <div id="ticketModal" class="admin-modal">
+        <div class="admin-modal-content">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="fw-bold m-0">Issue Detailed Summary</h4>
+                <button class="btn-close" onclick="closeModal()"></button>
+            </div>
+            <div id="modalDetails">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let charts = {};
+
+        async function checkAdminAuth() {
+            try {
+                const res = await fetch(`${API_BASE}/user/auth/me/`, { credentials: 'include' });
+                if (res.ok) {
+                    const user = await res.json();
+                    if (!user.is_staff) { window.location.href = '/'; return; }
+
+                    document.getElementById('userName').textContent = `${user.first_name || 'Admin'} ${user.last_name || ''}`;
+                    // Update Settings Profile Name as well
+                    const fullName = `${user.first_name || 'Authority'} ${user.last_name || 'Official'}`;
+                    document.getElementById('userName').textContent = fullName;
+                    document.getElementById('settingsName').textContent = fullName;
+
+                    document.getElementById('userInit').textContent = (user.first_name ? user.first_name[0] : user.username[0]).toUpperCase();
+                    document.getElementById('set-uid').value = user.username + " (Authorized)";
+
+                    initAdminPortal();
+                } else { window.location.href = '/login/'; }
+            } catch (err) { window.location.href = '/login/'; }
+        }
+
+        function switchView(id, el) {
+            document.querySelectorAll('.admin-nav-item').forEach(n => n.classList.remove('active'));
+            if (el) el.classList.add('active');
+            document.querySelectorAll('.admin-view').forEach(v => v.classList.remove('active'));
+            document.getElementById('view-' + id).classList.add('active');
+            document.getElementById('viewTitle').textContent = id.charAt(0).toUpperCase() + id.slice(1);
+            if (id === 'map') setTimeout(() => initAdminMap(), 100);
+            if (id === 'analytics') loadAnalytics();
+        }
+
+        async function loadAnalytics() {
+            try {
+                const res = await fetch(`${API_BASE}/authority/analytics/`);
+                const data = await res.json();
+                renderAnalyticsCharts(data);
+            } catch (err) { console.error("Error loading analytics:", err); }
+        }
+
+        async function initAdminPortal() {
+            try {
+                const res = await fetch(`${API_BASE}/authority/dashboard/overview/`);
+                const data = await res.json();
+
+                document.getElementById('stat-total').textContent = data.total_issues;
+                document.getElementById('stat-pending').textContent = data.pending_issues;
+                document.getElementById('stat-inprogress').textContent = data.in_progress_issues;
+                document.getElementById('stat-resolved').textContent = data.resolved_issues;
+                document.getElementById('ticketBadge').textContent = data.total_issues;
+
+                renderAdminCharts(data);
+                loadTickets();
+
+                const critList = document.getElementById('critical-list');
+                const alerts = data.recent_issues.slice(0, 5);
+
+                if (alerts.length === 0) {
+                    critList.innerHTML = '<div class="p-3 text-center text-muted">No recent reports.</div>';
+                } else {
+                    critList.innerHTML = alerts.map(i => `
+                        <div class="list-group-item d-flex justify-content-between align-items-center border-0 mb-2 alert-clickable" onclick="showTicketDetails(${i.id})">
+                            <div class="d-flex flex-column">
+                                <div class="small fw-bold text-truncate" style="max-width: 220px;">${i.title}</div>
+                                <div class="text-muted" style="font-size: 0.7rem;">📍 ${i.area}</div>
+                            </div>
+                            <span class="badge ${i.priority === 'CRITICAL' ? 'bg-danger' : i.priority === 'HIGH' ? 'bg-warning text-dark' : 'bg-secondary'}" style="font-size: 0.65rem;">${i.priority}</span>
+                        </div>
+                    `).join('');
+                }
+
+            } catch (err) { console.error(err); }
+        }
+
+        let currentTicketPage = 1;
+        const REPORTS_PER_PAGE = 10;
+        let allTickets = [];
+
+        async function loadTickets(page = 1) {
+            if (allTickets.length === 0 || page === 1) {
+                // Use map_data endpoint to get ALL issues for client-side pagination
+                const res = await fetch(`${API_BASE}/user/issues/map_data/`);
+                allTickets = await res.json();
+            }
+
+            currentTicketPage = page;
+            const total = allTickets.length;
+            const start = (page - 1) * REPORTS_PER_PAGE;
+            const end = start + REPORTS_PER_PAGE;
+            const pageItems = allTickets.slice(start, end);
+
+            const body = document.getElementById('tickets-body');
+            body.innerHTML = pageItems.map(i => `
+                <tr>
+                    <td class="ps-4 fw-bold">#${i.id}</td>
+                    <td>${i.title}</td>
+                    <td class="small">${i.area}</td>
+                    <td><span class="badge-admin badge-prio-critical" style="background: ${i.priority === 'CRITICAL' ? '#fee2e2' : i.priority === 'HIGH' ? '#fef3c7' : '#f1f5f9'}; color: ${i.priority === 'CRITICAL' ? '#991b1b' : i.priority === 'HIGH' ? '#92400e' : '#64748b'}">${i.priority}</span></td>
+                    <td><span class="badge-admin badge-status-pending">${i.status}</span></td>
+                    <td><button class="btn btn-sm btn-light border fw-bold" onclick="showTicketDetails(${i.id})">Manage</button></td>
+                </tr>
+            `).join('');
+
+            // Update pagination UI
+            document.getElementById('ticketPageInfo').textContent = `Showing ${start + 1}-${Math.min(end, total)} of ${total} tickets`;
+            document.getElementById('btnPrevTick').disabled = currentTicketPage === 1;
+            document.getElementById('btnNextTick').disabled = end >= total;
+        }
+
+        function changeTicketPage(delta) {
+            loadTickets(currentTicketPage + delta);
+        }
+
+        async function showTicketDetails(id) {
+            const modal = document.getElementById('ticketModal');
+            const box = document.getElementById('modalDetails');
+            modal.classList.add('active');
+            box.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+
+            try {
+                const res = await fetch(`${API_BASE}/user/issues/${id}/`, { credentials: 'include' });
+                const i = await res.json();
+
+                box.innerHTML = `
+                    <div class="row g-4">
+                        <div class="col-md-5">
+                            ${i.image ? `<img src="${i.image}" class="img-fluid rounded-3 shadow-sm mb-3" style="width: 100%; object-fit: cover; max-height: 300px;">` : `<div class="bg-light rounded-3 d-flex align-items-center justify-content-center" style="height: 200px">No Image</div>`}
+                            <div class="admin-card bg-light border-0">
+                                <div class="admin-stat-label">Reporter Info</div>
+                                <div class="fw-bold small">${i.reporter_name}</div>
+                                <div class="text-muted smaller">${i.reporter_phone}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-7">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span class="badge-admin badge-prio-critical">${i.priority}</span>
+                                <span class="badge-admin badge-status-pending">${i.status}</span>
+                            </div>
+                            <h5 class="fw-bold mb-3">${i.title}</h5>
+                            <p class="text-muted small mb-4">${i.description}</p>
+                            
+                            <div class="mb-3">
+                                <div class="admin-stat-label">Location Details</div>
+                                <div class="small">📍 ${i.address}</div>
+                                <div class="small text-primary fw-bold">${i.area}, ${i.city}</div>
+                            </div>
+                            
+                            <hr>
+                            <label class="form-label small fw-bold">Update Official Status</label>
+                            <div class="d-flex gap-2">
+                                <select class="form-select form-select-sm w-50" id="updateStatusVal">
+                                    <option value="PENDING" ${i.status === 'PENDING' ? 'selected' : ''}>Pending</option>
+                                    <option value="IN_PROGRESS" ${i.status === 'IN_PROGRESS' ? 'selected' : ''}>In Progress</option>
+                                    <option value="RESOLVED" ${i.status === 'RESOLVED' ? 'selected' : ''}>Resolved</option>
+                                </select>
+                                <button class="btn btn-primary btn-sm px-3">Update</button>
+                                <button class="btn btn-danger btn-sm px-3 ms-auto" onclick="deleteTicket(${i.id})">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } catch (err) { box.innerHTML = '<div class="alert alert-danger">Failed to load details.</div>'; }
+        }
+
+        function closeModal() { document.getElementById('ticketModal').classList.remove('active'); }
+
+        function renderAdminCharts(data) {
+            const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+            const renderPie = (canvasId, chartData, title) => {
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                if (charts[canvasId]) charts[canvasId].destroy();
+
+                charts[canvasId] = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: Object.keys(chartData),
+                        datasets: [{
+                            data: Object.values(chartData),
+                            backgroundColor: colors,
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false } // Hide legends for compact 2x2 grid
+                        }
+                    }
+                });
+            };
+
+            renderPie('chartTotal', data.issue_types);
+            renderPie('chartPending', data.pending_types);
+            renderPie('chartProgress', data.inprogress_types);
+            renderPie('chartResolved', data.resolved_types);
+        }
+
+        function renderAnalyticsCharts(data) {
+            // Chart A: Daily Trends (Line)
+            const ctxA = document.getElementById('chart-A').getContext('2d');
+            if (charts['chartA']) charts['chartA'].destroy();
+
+            // Reverse for chronological order
+            const dailyData = [...data.daily_counts].reverse();
+
+            charts['chartA'] = new Chart(ctxA, {
+                type: 'line',
+                data: {
+                    labels: dailyData.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+                    datasets: [{
+                        label: 'Daily Submissions',
+                        data: dailyData.map(d => d.count),
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { title: { display: true, text: '30-Day Submission Trend' } },
+                    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+                }
+            });
+
+            // Chart B: Priority Distribution (Bar)
+            const ctxB = document.getElementById('chart-B').getContext('2d');
+            if (charts['chartB']) charts['chartB'].destroy();
+
+            charts['chartB'] = new Chart(ctxB, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(data.priority_distribution).map(k => k.toUpperCase()),
+                    datasets: [{
+                        label: 'Issues by Priority',
+                        data: Object.values(data.priority_distribution),
+                        backgroundColor: ['#94a3b8', '#3b82f6', '#f59e0b', '#ef4444'],
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { title: { display: true, text: 'Active Issues by Priority' }, legend: { display: false } },
+                    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+                }
+            });
+        }
+
+        async function initAdminMap() {
+            if (window.adminMap) return;
+            // Haryana center
+            const HARYANA_BOUNDS = [[27.6, 74.4], [30.9, 77.6]];
+
+            window.adminMap = L.map('admin-map-container', {
+                maxBounds: HARYANA_BOUNDS,
+                maxBoundsViscosity: 1.0
+            }).setView([29.0588, 76.0856], 8);
+
+            L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png').addTo(window.adminMap);
+
+            try {
+                const res = await fetch(`${API_BASE}/user/issues/map_data/`);
+                const issues = await res.json();
+
+                // Update Map View Stats
+                if (document.getElementById('map-total')) {
+                    document.getElementById('map-total').textContent = issues.length;
+                    document.getElementById('map-pending').textContent = issues.filter(i => i.status === 'PENDING').length;
+                    document.getElementById('map-progress').textContent = issues.filter(i => i.status === 'IN_PROGRESS').length;
+                    document.getElementById('map-resolved').textContent = issues.filter(i => i.status === 'RESOLVED').length;
+                }
+
+                // Add Heatmap
+                const heatPoints = issues.map(i => [parseFloat(i.latitude), parseFloat(i.longitude), 0.6]);
+                if (heatPoints.length > 0) {
+                    L.heatLayer(heatPoints, { radius: 25, blur: 15 }).addTo(window.adminMap);
+                }
+
+                // Add Individual Markers (Dots)
+                issues.forEach(i => {
+                    const color = i.priority === 'CRITICAL' ? '#ef4444' : (i.priority === 'HIGH' ? '#f59e0b' : '#3b82f6');
+                    L.circleMarker([i.latitude, i.longitude], {
+                        radius: 6,
+                        fillColor: color,
+                        color: "#fff",
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    })
+                        .on('click', () => showTicketDetails(i.id))
+                        .addTo(window.adminMap);
+                });
+
+            } catch (err) { console.error("Error loading map data:", err); }
+        }
+
+        async function deleteTicket(id) {
+            if (!confirm('Are you sure you want to permanently delete this report?')) return;
+
+            try {
+                const res = await fetch(`${API_BASE}/user/issues/${id}/`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                    credentials: 'include'
+                });
+
+                if (res.ok) {
+                    closeModal();
+                    loadTickets(currentTicketPage);
+                    // Refresh stats if needed
+                    const statsRes = await fetch(`${API_BASE}/authority/dashboard/overview/`);
+                    const stats = await statsRes.json();
+                    document.getElementById('stat-total').textContent = stats.total_issues;
+                    document.getElementById('ticketBadge').textContent = stats.total_issues;
+                } else {
+                    alert('Failed to delete ticket');
+                }
+            } catch (e) { console.error(e); alert('Error deleting ticket'); }
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        async function genReport() {
+            const box = document.getElementById('ai-insights');
+            box.textContent = "Processing authority algorithms...";
+            const res = await fetch(`${API_BASE}/authority/dashboard/generate_report/`);
+            const data = await res.json();
+            // Parse markdown to HTML using marked library
+            box.innerHTML = marked.parse(data.report);
+        }
+
+        document.getElementById('logoutBtn').onclick = async () => {
+            await fetch(`${API_BASE}/user/auth/logout/`, { method: 'POST', credentials: 'include' });
+            window.location.href = '/login/';
+        };
+
+        checkAdminAuth();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,46 @@
+{% extends 'citizen/base_citizen.html' %}
+
+{% block title %}Profile - CityPulse{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 800px;">
+    <h1 style="font-size: 2.5rem; font-weight: 800; margin-bottom: 2rem;">👤 My Profile</h1>
+
+    <div class="card">
+        <div style="display: flex; align-items: center; gap: 2rem; margin-bottom: 2rem;">
+            <div id="profAvatar"
+                style="width: 100px; height: 100px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: white; font-weight: 800;">
+                U
+            </div>
+            <div>
+                <h2 id="fullName" style="margin: 0; font-size: 1.75rem; font-weight: 700;">Loading...</h2>
+                <p id="userEmail" style="color: var(--gray-600); margin: 0.25rem 0 0.5rem 0;">Loading...</p>
+                <span class="badge badge-pending">Verified Citizen</span>
+            </div>
+        </div>
+
+        <div class="grid grid-2" style="border-top: 1px solid var(--gray-100); padding-top: 2rem;">
+            <div class="form-group">
+                <label class="form-label">Username</label>
+                <input type="text" id="profileUsername" class="form-input" readonly>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Date Joined</label>
+                <input type="text" id="dateJoined" class="form-input" readonly>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function onAuthReady(user) {
+        document.getElementById('fullName').textContent = `${user.first_name} ${user.last_name}`;
+        document.getElementById('userEmail').textContent = user.email;
+        document.getElementById('profileUsername').value = user.username;
+        document.getElementById('profAvatar').textContent = user.first_name ? user.first_name[0] : user.username[0];
+        document.getElementById('dateJoined').value = user.date_joined ? new Date(user.date_joined).toLocaleDateString() : 'N/A';
+    }
+</script>
+{% endblock %}

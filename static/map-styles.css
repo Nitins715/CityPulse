@@ -1,0 +1,32 @@
+/* Map Styles */
+#map {
+    height: 500px;
+    width: 100%;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    z-index: 1;
+}
+
+.map-container {
+    position: relative;
+    margin-bottom: var(--spacing-xl);
+}
+
+.leaflet-popup-content-wrapper {
+    border-radius: var(--radius-md);
+}
+
+.leaflet-popup-content {
+    margin: var(--spacing-md);
+    font-family: 'Inter', sans-serif;
+}
+
+.map-marker-popup h3 {
+    margin-bottom: var(--spacing-sm);
+    color: var(--primary);
+}
+
+.map-marker-popup p {
+    margin: var(--spacing-xs) 0;
+    font-size: 0.875rem;
+}

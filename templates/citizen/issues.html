@@ -1,0 +1,167 @@
+{% extends 'citizen/base_citizen.html' %}
+
+{% block title %}My Reports - CityPulse{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <div>
+            <h1 style="font-size: 2.5rem; font-weight: 800; margin-bottom: 0.5rem;">My Reports Dashboard</h1>
+            <p style="color: var(--gray-500);">Track and manage your submitted civic reports</p>
+        </div>
+        <button class="btn btn-secondary" onclick="loadIssues()">🔄 Refresh</button>
+    </div>
+
+    <!-- Filters -->
+    <div class="card" style="margin-bottom: 2rem;">
+        <div
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; align-items: end;">
+            <div class="form-group" style="margin: 0;">
+                <label class="form-label">Status</label>
+                <select id="filterStatus" class="form-select">
+                    <option value="">All Statuses</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="IN_PROGRESS">In Progress</option>
+                    <option value="RESOLVED">Resolved</option>
+                    <option value="REJECTED">Rejected</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label class="form-label">Area</label>
+                <input type="text" id="filterArea" class="form-input" placeholder="e.g. Sector 15">
+            </div>
+            <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+        </div>
+    </div>
+
+    <!-- Reports List -->
+    <div id="issuesList">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Pagination -->
+    <div id="pagination" class="flex-between mt-2"
+        style="display: none; padding: 1rem; background: white; border-radius: var(--radius-lg); margin-top: 2rem;">
+        <button id="prevBtn" class="btn btn-secondary" onclick="previousPage()">← Previous</button>
+        <span id="pageInfo" style="color: var(--gray-600); font-weight: 600;"></span>
+        <button id="nextBtn" class="btn btn-secondary" onclick="nextPage()">Next →</button>
+    </div>
+</div>
+
+<!-- Issue Detail Modal -->
+<div id="issueModal" class="modal">
+    <div class="modal-content">
+        <div class="flex-between mb-2">
+            <h2 style="font-size: 1.5rem; font-weight: 700;">Issue Details</h2>
+            <button class="btn btn-secondary" onclick="closeModal()">✕</button>
+        </div>
+        <div id="issueDetails"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let currentPage = 1;
+    let totalPages = 1;
+    let currentFilters = {};
+
+    function onAuthReady() {
+        loadIssues();
+    }
+
+    async function loadIssues(page = 1) {
+        const container = document.getElementById('issuesList');
+        container.innerHTML = '<div class="spinner"></div>';
+
+        try {
+            let url = `${API_BASE}/user/issues/?page=${page}`;
+            if (currentFilters.status) url += `&status=${currentFilters.status}`;
+            if (currentFilters.area) url += `&area=${currentFilters.area}`;
+
+            const response = await fetch(url, { credentials: 'include' });
+            const data = await response.json();
+
+            currentPage = page;
+            totalPages = Math.ceil(data.count / 10);
+
+            if (data.results && data.results.length > 0) {
+                container.innerHTML = `<div class="activity-list">` + data.results.map(issue => `
+                    <div class="activity-item" onclick="showIssueDetails(${issue.id})" style="cursor: pointer;">
+                        <div class="activity-icon">${issue.status === 'RESOLVED' ? '✅' : '⚠️'}</div>
+                        <div class="activity-info">
+                            <div class="activity-title">${issue.title}</div>
+                            <div class="activity-time">📍 ${issue.area} • ${new Date(issue.created_at).toLocaleDateString()}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <span class="badge badge-${issue.status.toLowerCase().replace('_', '-')}">${issue.status}</span>
+                            <div style="font-size: 0.75rem; color: var(--gray-500); margin-top: 4px;">ID: #${issue.id}</div>
+                        </div>
+                    </div>
+                `).join('') + `</div>`;
+
+                if (totalPages > 1) {
+                    document.getElementById('pagination').style.display = 'flex';
+                    document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+                    document.getElementById('prevBtn').disabled = currentPage === 1;
+                    document.getElementById('nextBtn').disabled = currentPage === totalPages;
+                } else {
+                    document.getElementById('pagination').style.display = 'none';
+                }
+            } else {
+                container.innerHTML = '<div class="card text-center" style="padding: 4rem;"><p style="color: var(--gray-500);">No matching reports found.</p></div>';
+                document.getElementById('pagination').style.display = 'none';
+            }
+        } catch (err) {
+            container.innerHTML = '<p class="text-center" style="color: var(--danger);">Error loading your reports.</p>';
+        }
+    }
+
+    async function showIssueDetails(id) {
+        const modal = document.getElementById('issueModal');
+        const details = document.getElementById('issueDetails');
+        modal.classList.add('active');
+        details.innerHTML = '<div class="spinner"></div>';
+
+        try {
+            const response = await fetch(`${API_BASE}/user/issues/${id}/`, { credentials: 'include' });
+            const issue = await response.json();
+
+            details.innerHTML = `
+                <div style="display: grid; gap: 1.5rem;">
+                    ${issue.image ? `<img src="${issue.image}" style="width: 100%; border-radius: var(--radius-lg); max-height: 250px; object-fit: cover;">` : ''}
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <h3 style="font-size: 1.25rem; font-weight: 700;">${issue.title}</h3>
+                            <span class="badge badge-${issue.status.toLowerCase().replace('_', '-')}">${issue.status}</span>
+                        </div>
+                        <p style="color: var(--gray-600); margin-top: 1rem;">${issue.description}</p>
+                    </div>
+                    <div style="background: var(--gray-50); padding: 1rem; border-radius: var(--radius-md);">
+                        <p><strong>📍 Location:</strong> ${issue.address}, ${issue.area}</p>
+                        <p><strong>🏷️ Category:</strong> ${issue.issue_type}</p>
+                        <p><strong>🕒 Reported:</strong> ${new Date(issue.created_at).toLocaleString()}</p>
+                    </div>
+                    ${issue.authority_notes ? `
+                        <div style="background: #eff6ff; padding: 1rem; border-radius: var(--radius-md); border-left: 4px solid var(--primary);">
+                            <h4 style="color: var(--primary); font-size: 0.875rem; text-transform: uppercase;">Official Notes</h4>
+                            <p style="margin-top: 0.5rem; color: var(--gray-700);">${issue.authority_notes}</p>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        } catch (err) {
+            details.innerHTML = '<p>Error loading details.</p>';
+        }
+    }
+
+    function closeModal() { document.getElementById('issueModal').classList.remove('active'); }
+    function applyFilters() {
+        currentFilters.status = document.getElementById('filterStatus').value;
+        currentFilters.area = document.getElementById('filterArea').value;
+        loadIssues(1);
+    }
+    function previousPage() { if (currentPage > 1) loadIssues(currentPage - 1); }
+    function nextPage() { if (currentPage < totalPages) loadIssues(currentPage + 1); }
+</script>
+{% endblock %}

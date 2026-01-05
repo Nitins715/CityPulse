@@ -1,0 +1,93 @@
+{% extends 'citizen/base_citizen.html' %}
+
+{% block title %}CityPulse - Home{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Welcome Section -->
+    <div style="margin-bottom: 2.5rem;">
+        <h1 id="welcomeText" style="font-size: 2.5rem; font-weight: 800; margin-bottom: 0.5rem;">Hi, Citizen!</h1>
+        <p style="color: var(--gray-500); font-size: 1.1rem;">Together, let's make our city a better place to live.</p>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="stats-container">
+        <div class="compact-stat-card">
+            <div class="stat-text">My Reports</div>
+            <div id="statMyReports" class="stat-number">0</div>
+        </div>
+        <div class="compact-stat-card">
+            <div class="stat-text">Pending Action</div>
+            <div id="statPending" class="stat-number" style="color: var(--warning);">0</div>
+        </div>
+        <div class="compact-stat-card">
+            <div class="stat-text">Civic Score</div>
+            <div id="statCivicScore" class="stat-number" style="color: var(--primary);">0</div>
+        </div>
+    </div>
+
+    <div class="grid grid-2">
+        <!-- Promo Card -->
+        <div class="promo-card" style="margin-top: 0; background: linear-gradient(135deg, #1e293b, #0f172a);">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🚀</div>
+            <h2>Spotted something?</h2>
+            <p>Report issues like potholes, garbage, or broken lights in seconds.</p>
+            <a href="/report/" class="btn btn-primary"
+                style="background: white; color: var(--primary); width: 100%;">Create New Report</a>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+                <h3 class="card-title">Recent Activity</h3>
+            </div>
+            <div id="activityFeed" class="activity-list">
+                <div class="spinner"></div>
+            </div>
+            <div style="text-align: center; margin-top: 1.5rem;">
+                <a href="/issues/" style="color: var(--primary); font-weight: 600; text-decoration: none;">View
+                    Management Dashboard →</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function onAuthReady(user) {
+        const name = user.first_name || user.username;
+        document.getElementById('welcomeText').textContent = `Hi, ${name}!`;
+        loadDashboardData();
+    }
+
+    async function loadDashboardData() {
+        try {
+            const response = await fetch(`${API_BASE}/user/issues/?page_size=5`, { credentials: 'include' });
+            const data = await response.json();
+            const issues = data.results || [];
+
+            const totalCount = data.count || issues.length;
+            document.getElementById('statMyReports').textContent = totalCount;
+            document.getElementById('statCivicScore').textContent = totalCount * 100;
+            const pendingCount = issues.filter(i => i.status === 'PENDING').length;
+            document.getElementById('statPending').textContent = pendingCount;
+
+            const feed = document.getElementById('activityFeed');
+            if (issues.length === 0) {
+                feed.innerHTML = '<p class="text-center py-4 text-muted">No recent activity found.</p>';
+            } else {
+                feed.innerHTML = issues.slice(0, 3).map(issue => `
+                    <div class="activity-item">
+                        <div class="activity-icon">${issue.status === 'RESOLVED' ? '✅' : '⚠️'}</div>
+                        <div class="activity-info">
+                            <div class="activity-title">${issue.title}</div>
+                            <div class="activity-time">${new Date(issue.created_at).toLocaleDateString()} • ${issue.status}</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        } catch (err) { console.error(err); }
+    }
+</script>
+{% endblock %}

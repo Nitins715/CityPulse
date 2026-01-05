@@ -1,0 +1,166 @@
+{% extends 'citizen/base_citizen.html' %}
+
+{% block title %}City Heatmap - CityPulse{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/map-styles.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <div>
+            <h1 style="font-size: 2.5rem; font-weight: 800; margin-bottom: 0.5rem;">City Heatmap</h1>
+            <p style="color: var(--gray-500);">Visualize active problem zones across the city</p>
+        </div>
+    </div>
+
+    <div class="card" style="padding: 0; overflow: hidden; height: 600px; position: relative;">
+        <div id="map" style="height: 100%; width: 100%;"></div>
+
+        <div
+            style="position: absolute; top: 1rem; right: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem;">
+            <button class="btn btn-primary" onclick="toggleHeatmap()" style="box-shadow: var(--shadow-lg);">🔥 Heatmap
+                Toggle</button>
+            <button class="btn btn-secondary" onclick="centerOnUser()"
+                style="box-shadow: var(--shadow-lg); background: white;">📍 My Location</button>
+        </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid grid-4" style="margin-top: 2rem;">
+        <div class="compact-stat-card">
+            <div id="totalMarkers" class="stat-number">0</div>
+            <div class="stat-text">Total Issues</div>
+        </div>
+        <div class="compact-stat-card">
+            <div id="pendingMarkers" class="stat-number" style="color: var(--gray-500);">0</div>
+            <div class="stat-text">Pending</div>
+        </div>
+        <div class="compact-stat-card">
+            <div id="progressMarkers" class="stat-number" style="color: var(--warning);">0</div>
+            <div class="stat-text">In Progress</div>
+        </div>
+        <div class="compact-stat-card">
+            <div id="resolvedMarkers" class="stat-number" style="color: var(--success);">0</div>
+            <div class="stat-text">Resolved</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const HARYANA_BOUNDS = [[27.6, 74.4], [30.9, 77.6]];
+    let map, heatmapLayer, markersLayer;
+    let allIssues = [];
+    let heatmapVisible = true;
+    let userLocation = null;
+
+    function onAuthReady() {
+        initMap();
+    }
+
+    function initMap() {
+        if (map) return;
+        // Center on Haryana
+        map = L.map('map', {
+            maxBounds: HARYANA_BOUNDS,
+            maxBoundsViscosity: 1.0
+        }).setView([29.0588, 76.0856], 8);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        markersLayer = L.layerGroup().addTo(map);
+        loadIssues();
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((pos) => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                // Only show user location if within Haryana
+                if (lat >= HARYANA_BOUNDS[0][0] && lat <= HARYANA_BOUNDS[1][0] &&
+                    lng >= HARYANA_BOUNDS[0][1] && lng <= HARYANA_BOUNDS[1][1]) {
+                    userLocation = [lat, lng];
+                    L.marker(userLocation, {
+                        icon: L.divIcon({
+                            className: 'user-loc',
+                            html: '<div style="background: var(--primary); width: 15px; height: 15px; border-radius: 50%; border: 3px solid white;"></div>'
+                        })
+                    }).addTo(map);
+                }
+            });
+        }
+    }
+
+    async function loadIssues() {
+        try {
+            // Use the non-paginated map_data endpoint
+            const response = await fetch(`${API_BASE}/user/issues/map_data/`, { credentials: 'include' });
+            const results = await response.json();
+
+            // Filter to only include issues within Haryana bounds
+            allIssues = results.filter(i => {
+                const lat = parseFloat(i.latitude);
+                const lng = parseFloat(i.longitude);
+                return lat >= HARYANA_BOUNDS[0][0] && lat <= HARYANA_BOUNDS[1][0] &&
+                    lng >= HARYANA_BOUNDS[0][1] && lng <= HARYANA_BOUNDS[1][1];
+            });
+
+            displayIssues(allIssues);
+            updateStats(allIssues);
+        } catch (err) { console.error(err); }
+    }
+
+    function displayIssues(issues) {
+        markersLayer.clearLayers();
+        const heatmapData = issues
+            .filter(i => (i.status === 'PENDING' || i.status === 'IN_PROGRESS') && i.latitude && i.longitude)
+            .map(i => [parseFloat(i.latitude), parseFloat(i.longitude), 1]);
+
+        if (heatmapLayer) map.removeLayer(heatmapLayer);
+        heatmapLayer = L.heatLayer(heatmapData, { radius: 25, blur: 15 }).addTo(map);
+
+        issues.forEach(issue => {
+            if (issue.latitude && issue.longitude) {
+                const markerColor = issue.status === 'RESOLVED' ? '#10b981' : (issue.status === 'IN_PROGRESS' ? '#f59e0b' : '#ef4444');
+                L.circleMarker([issue.latitude, issue.longitude], {
+                    radius: 6,
+                    fillColor: markerColor,
+                    color: '#fff',
+                    weight: 1,
+                    fillOpacity: 0.8
+                }).addTo(markersLayer).bindPopup(`<b>${issue.title}</b><br>${issue.area}`);
+            }
+        });
+    }
+
+    function toggleHeatmap() {
+        if (heatmapVisible) map.removeLayer(heatmapLayer);
+        else heatmapLayer.addTo(map);
+        heatmapVisible = !heatmapVisible;
+    }
+
+    function centerOnUser() {
+        if (userLocation) map.setView(userLocation, 14);
+        else alert("You are currently outside the monitored Haryana region.");
+    }
+
+    function updateStats(issues) {
+        const total = document.getElementById('totalMarkers');
+        const pending = document.getElementById('pendingMarkers');
+        const progress = document.getElementById('progressMarkers');
+        const resolved = document.getElementById('resolvedMarkers');
+
+        if (total) total.textContent = issues.length;
+        if (pending) pending.textContent = issues.filter(i => i.status === 'PENDING').length;
+        if (progress) progress.textContent = issues.filter(i => i.status === 'IN_PROGRESS').length;
+        if (resolved) resolved.textContent = issues.filter(i => i.status === 'RESOLVED').length;
+    }
+</script>
+{% endblock %}
